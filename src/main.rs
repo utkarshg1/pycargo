@@ -61,12 +61,12 @@ async fn main() -> Result<()> {
     fs::create_dir(project_name).await?;
     env::set_current_dir(project_name)?;
 
+    // Setup environment
+    setup_environment().await?;
+
     // Setup requirements.txt
     println!("📝 Creating requirements.txt from template...");
     create_requirements_file(&args.setup).await?;
-
-    // Setup environment
-    setup_environment().await?;
 
     // Download additional files
     println!("📦 Downloading .gitignore...");
@@ -103,10 +103,7 @@ async fn setup_environment() -> Result<()> {
     run("uv", &["init", "."]).await?;
 
     println!("🐍 Creating virtual environment...");
-    run("uv", &["venv", ".venv"]).await?;
-
-    println!("📈 Upgrading pip...");
-    run("uv", &["pip", "install", "--upgrade", "pip"]).await
+    run("uv", &["venv", ".venv"]).await
 }
 
 async fn create_requirements_file(setup_type: &str) -> Result<()> {
