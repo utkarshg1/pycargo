@@ -44,49 +44,24 @@ async fn main() {
         .expect("Failed to create project directory");
     env::set_current_dir(project_name).expect("Failed to change directory");
 
-    println!("📝 Writing requirements.txt...");
-    let requirements = match args.setup.as_str() {
-        "basic" => {
-            r#"numpy
-pandas
-matplotlib
-seaborn
-ipykernel
-"#
-        }
-        "advanced" => {
-            r#"numpy
-pandas
-matplotlib
-seaborn
-ipykernel
-plotly
-nbformat
-requests
-beautifulsoup4
-pydantic
-streamlit
-"#
-        }
-        "data-science" => {
-            r#"numpy
-pandas
-matplotlib
-seaborn
-ipykernel
-scikit-learn
-joblib
-statsmodels
-streamlit
-xgboost
-"#
-        }
+    println!("📝 Copying requirements.txt from template...");
+    let template_file = match args.setup.as_str() {
+        "basic" => "templates/basic.txt",
+        "advanced" => "templates/advanced.txt",
+        "data-science" => "templates/datascience.txt",
         "blank" => "",
         _ => panic!("Invalid setup type. Use 'basic', 'advanced', 'data-science', or 'blank'."),
     };
-    fs::write("requirements.txt", requirements)
-        .await
-        .expect("Failed to write requirements.txt");
+
+    if !template_file.is_empty() {
+        fs::copy(template_file, "requirements.txt")
+            .await
+            .expect("Failed to copy requirements.txt from template");
+    } else {
+        fs::write("requirements.txt", "")
+            .await
+            .expect("Failed to create blank requirements.txt");
+    }
 
     println!("🔧 Checking uv installation...");
     if run("uv", &["--version"]).await.is_err() {
