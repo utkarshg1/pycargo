@@ -1,12 +1,17 @@
 use clap::Parser;
 use std::env;
-use std::io::{self, Write};
+use std::io;
 use tokio::fs;
 use tokio::process::Command;
 
 const GITIGNORE_URL: &str =
     "https://raw.githubusercontent.com/github/gitignore/main/Python.gitignore";
 const LICENSE_URL: &str = "https://www.apache.org/licenses/LICENSE-2.0.txt";
+
+// Embed the template files into the binary using `include_str!`
+const BASIC_TEMPLATE: &str = include_str!("../templates/basic.txt");
+const ADVANCED_TEMPLATE: &str = include_str!("../templates/advanced.txt");
+const DATASCIENCE_TEMPLATE: &str = include_str!("../templates/datascience.txt");
 
 /// PyCargo – Bootstrap a Python Data Science Project
 #[derive(Parser)]
@@ -30,12 +35,24 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    validate_env_vars();
-    check_dependency("git").await;
-    check_dependency("uv").await;
-    check_git_config().await;
-
     let args = Args::parse();
+
+    // If the --version flag is used, exit early to avoid additional output
+    if std::env::args().any(|arg| arg == "--version") {
+        return;
+    }
+
+    validate_env_vars();
+
+    // Check Git configuration at the start
+    check_git_config("user.name", "name").await;
+    check_git_config("user.email", "email").await;
+
+    let dependencies = ["git", "pip"];
+    for dep in dependencies {
+        check_dependency(dep).await;
+    }
+
     let project_name = &args.name;
 
     println!("📁 Creating project directory...");
@@ -45,23 +62,18 @@ async fn main() {
     env::set_current_dir(project_name).expect("Failed to change directory");
 
     println!("📝 Copying requirements.txt from template...");
-    let template_file = match args.setup.as_str() {
-        "basic" => "templates/basic.txt",
-        "advanced" => "templates/advanced.txt",
-        "data-science" => "templates/datascience.txt",
+
+    let template_content = match args.setup.as_str() {
+        "basic" => BASIC_TEMPLATE,
+        "advanced" => ADVANCED_TEMPLATE,
+        "data-science" => DATASCIENCE_TEMPLATE,
         "blank" => "",
         _ => panic!("Invalid setup type. Use 'basic', 'advanced', 'data-science', or 'blank'."),
     };
 
-    if !template_file.is_empty() {
-        fs::copy(template_file, "requirements.txt")
-            .await
-            .expect("Failed to copy requirements.txt from template");
-    } else {
-        fs::write("requirements.txt", "")
-            .await
-            .expect("Failed to create blank requirements.txt");
-    }
+    fs::write("requirements.txt", template_content)
+        .await
+        .expect("Failed to write requirements.txt from template");
 
     println!("🔧 Checking uv installation...");
     if run("uv", &["--version"]).await.is_err() {
@@ -82,10 +94,10 @@ async fn main() {
     }
 
     println!("📦 Downloading .gitignore...");
-    download_file(GITIGNORE_URL, ".gitignore").await;
+    download_and_write_file(GITIGNORE_URL, ".gitignore").await;
 
     println!("📄 Downloading Apache LICENSE...");
-    download_file(LICENSE_URL, "LICENSE").await;
+    download_and_write_file(LICENSE_URL, "LICENSE").await;
 
     println!("🐍 Creating virtual environment...");
     run("uv", &["venv", ".venv"])
@@ -153,40 +165,18 @@ fn validate_env_vars() {
     }
 }
 
-async fn check_git_config() {
-    let user_name = get_git_config("user.name").await;
-    if user_name.is_empty() {
-        println!("Git global user.name is not set. Please enter your name:");
-        let name = get_user_input();
-        if let Err(err) = git_command(&["config", "--global", "user.name", &name]).await {
-            eprintln!("❌ Failed to set git user.name: {}", err);
+async fn check_git_config(key: &str, prompt: &str) {
+    let value = get_git_config(key).await;
+    if value.is_empty() {
+        println!(
+            "Git global {} is not set. Please enter your {}:",
+            key, prompt
+        );
+        let input = get_user_input();
+        if let Err(err) = git_command(&["config", "--global", key, &input]).await {
+            eprintln!("❌ Failed to set git {}: {}", key, err);
         }
     }
-
-    let user_email = get_git_config("user.email").await;
-    if user_email.is_empty() {
-        println!("Git global user.email is not set. Please enter your email:");
-        let email = get_user_input();
-        if let Err(err) = git_command(&["config", "--global", "user.email", &email]).await {
-            eprintln!("❌ Failed to set git user.email: {}", err);
-        }
-    }
-}
-
-async fn get_git_config(key: &str) -> String {
-    let output = Command::new("git")
-        .args(["config", "--global", "--get", key])
-        .output()
-        .await
-        .unwrap();
-    String::from_utf8(output.stdout).unwrap().trim().to_string()
-}
-
-fn get_user_input() -> String {
-    let mut input = String::new();
-    io::stdout().flush().unwrap();
-    io::stdin().read_line(&mut input).unwrap();
-    input.trim().to_string()
 }
 
 async fn run(cmd: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
@@ -202,7 +192,7 @@ async fn git_command(args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
     run("git", args).await
 }
 
-async fn download_file(url: &str, filename: &str) {
+async fn download_and_write_file(url: &str, filename: &str) {
     let body = reqwest::get(url).await.unwrap().text().await.unwrap();
     fs::write(filename, body).await.unwrap();
 }
@@ -252,4 +242,19 @@ async fn check_dependency(cmd: &str) {
         );
         std::process::exit(1);
     }
+}
+
+async fn get_git_config(key: &str) -> String {
+    let output = Command::new("git")
+        .args(["config", "--get", key])
+        .output()
+        .await
+        .unwrap();
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
+}
+
+fn get_user_input() -> String {
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    input.trim().to_string()
 }
