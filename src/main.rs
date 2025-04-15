@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::env;
+use std::io::{self, Write};
 use tokio::fs;
 use tokio::process::Command;
 
@@ -13,10 +14,16 @@ struct Args {
     /// Name of the GitHub repo (optional)
     #[arg(long)]
     github_repo: Option<String>,
+
+    /// Setup type: basic, advanced, data-science, or blank
+    #[arg(long, default_value = "advanced")]
+    setup: String,
 }
 
 #[tokio::main]
 async fn main() {
+    check_git_config().await;
+
     let args = Args::parse();
     let project_name = &args.name;
 
@@ -27,7 +34,17 @@ async fn main() {
     env::set_current_dir(project_name).expect("Failed to change directory");
 
     println!("📝 Writing requirements.txt...");
-    let requirements = r#"numpy
+    let requirements = match args.setup.as_str() {
+        "basic" => {
+            r#"numpy
+pandas
+matplotlib
+seaborn
+ipykernel
+"#
+        }
+        "advanced" => {
+            r#"numpy
 pandas
 matplotlib
 seaborn
@@ -37,15 +54,37 @@ nbformat
 requests
 beautifulsoup4
 pydantic
-"#;
+streamlit
+"#
+        }
+        "data-science" => {
+            r#"numpy
+pandas
+matplotlib
+seaborn
+ipykernel
+scikit-learn
+statsmodels
+streamlit
+xgboost
+"#
+        }
+        "blank" => "",
+        _ => panic!("Invalid setup type. Use 'basic', 'advanced', 'data-science', or 'blank'."),
+    };
     fs::write("requirements.txt", requirements)
         .await
         .expect("Failed to write requirements.txt");
 
+    println!("🔧 Checking uv installation...");
+    if run("uv", &["--version"]).await.is_err() {
+        println!("uv is not installed. Installing uv...");
+        run("pip", &["install", "uv"])
+            .await
+            .expect("Failed to install uv");
+    }
+
     println!("🚀 Initializing uv... ");
-    run("pip", &["install", "uv"])
-        .await
-        .expect("Failed to install uv");
     run("uv", &["init", "."])
         .await
         .expect("Failed to initialize uv");
@@ -123,6 +162,42 @@ pydantic
     }
 
     println!("✅ Setup Completed 🐍");
+}
+
+async fn check_git_config() {
+    let user_name = get_git_config("user.name").await;
+    if user_name.is_empty() {
+        println!("Git global user.name is not set. Please enter your name:");
+        let name = get_user_input();
+        run("git", &["config", "--global", "user.name", &name])
+            .await
+            .expect("Failed to set git user.name");
+    }
+
+    let user_email = get_git_config("user.email").await;
+    if user_email.is_empty() {
+        println!("Git global user.email is not set. Please enter your email:");
+        let email = get_user_input();
+        run("git", &["config", "--global", "user.email", &email])
+            .await
+            .expect("Failed to set git user.email");
+    }
+}
+
+async fn get_git_config(key: &str) -> String {
+    let output = Command::new("git")
+        .args(["config", "--global", "--get", key])
+        .output()
+        .await
+        .unwrap();
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
+}
+
+fn get_user_input() -> String {
+    let mut input = String::new();
+    io::stdout().flush().unwrap();
+    io::stdin().read_line(&mut input).unwrap();
+    input.trim().to_string()
 }
 
 async fn run(cmd: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {

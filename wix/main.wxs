@@ -61,7 +61,7 @@
     <Product
         Id='*'
         Name='pycargo'
-        UpgradeCode='47E48A12-CDF6-4C2D-A1F1-E76C3F263D93'
+        UpgradeCode='0C1C255A-34C4-4E24-858D-3DC4447CA208'
         Manufacturer='Utkarsh Gaikwad'
         Language='1033'
         Codepage='1252'
@@ -102,7 +102,7 @@
                     </Component>
                     
                     <Directory Id='Bin' Name='bin'>
-                        <Component Id='Path' Guid='5131ACDF-A39C-4DB4-B006-27EC18AE7196' KeyPath='yes'>
+                        <Component Id='Path' Guid='DE987748-63C6-4C85-9FEE-5F85468FB78C' KeyPath='yes'>
                             <Environment
                                 Id='PATH'
                                 Name='PATH'
