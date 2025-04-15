@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use clap::Parser;
 use std::env;
 use std::io;
@@ -34,227 +35,195 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     let args = Args::parse();
 
-    // If the --version flag is used, exit early to avoid additional output
+    // Early exit for version flag
     if std::env::args().any(|arg| arg == "--version") {
-        return;
+        return Ok(());
     }
 
-    validate_env_vars();
-
-    // Check Git configuration at the start
-    check_git_config("user.name", "name").await;
-    check_git_config("user.email", "email").await;
-
-    let dependencies = ["git", "pip"];
-    for dep in dependencies {
-        check_dependency(dep).await;
-    }
-
+    // Check directory existence
     let project_name = &args.name;
+    if fs::metadata(project_name).await.is_ok() {
+        anyhow::bail!("❌ Directory '{}' already exists", project_name);
+    }
 
+    // Check Git configuration
+    check_git_config("user.name", "name").await?;
+    check_git_config("user.email", "email").await?;
+
+    // Check dependencies
+    check_uv_installation().await?;
+
+    // Create project structure
     println!("📁 Creating project directory...");
-    fs::create_dir(project_name)
-        .await
-        .expect("Failed to create project directory");
-    env::set_current_dir(project_name).expect("Failed to change directory");
+    fs::create_dir(project_name).await?;
+    env::set_current_dir(project_name)?;
 
-    println!("📝 Copying requirements.txt from template...");
+    // Setup requirements.txt
+    println!("📝 Creating requirements.txt from template...");
+    create_requirements_file(&args.setup).await?;
 
-    let template_content = match args.setup.as_str() {
+    // Setup environment
+    setup_environment().await?;
+
+    // Download additional files
+    println!("📦 Downloading .gitignore...");
+    download_and_write_file(GITIGNORE_URL, ".gitignore").await?;
+
+    println!("📄 Downloading Apache LICENSE...");
+    download_and_write_file(LICENSE_URL, "LICENSE").await?;
+
+    // Initialize Git
+    initialize_git_repo().await?;
+
+    // Handle GitHub integration
+    if let Some(repo_name) = args.github_repo {
+        validate_env_vars()?;
+        create_github_repo(&repo_name, args.private).await?;
+        setup_github_remote(&repo_name).await?;
+    }
+
+    println!("✅ Setup Completed 🐍");
+    Ok(())
+}
+
+async fn check_uv_installation() -> Result<()> {
+    println!("🔧 Checking uv installation...");
+    if run("uv", &["--version"]).await.is_err() {
+        println!("uv is not installed. Installing uv...");
+        run("pip", &["install", "uv"]).await?;
+    }
+    Ok(())
+}
+
+async fn setup_environment() -> Result<()> {
+    println!("🚀 Initializing uv...");
+    run("uv", &["init", "."]).await?;
+
+    println!("🐍 Creating virtual environment...");
+    run("uv", &["venv", ".venv"]).await?;
+
+    println!("📈 Upgrading pip...");
+    run("uv", &["pip", "install", "--upgrade", "pip"]).await
+}
+
+async fn create_requirements_file(setup_type: &str) -> Result<()> {
+    let content = match setup_type {
         "basic" => BASIC_TEMPLATE,
         "advanced" => ADVANCED_TEMPLATE,
         "data-science" => DATASCIENCE_TEMPLATE,
         "blank" => "",
-        _ => panic!("Invalid setup type. Use 'basic', 'advanced', 'data-science', or 'blank'."),
+        _ => anyhow::bail!("Invalid setup type. Use 'basic', 'advanced', 'data-science', or 'blank'"),
     };
 
-    fs::write("requirements.txt", template_content)
-        .await
-        .expect("Failed to write requirements.txt from template");
-
-    println!("🔧 Checking uv installation...");
-    if run("uv", &["--version"]).await.is_err() {
-        println!("uv is not installed. Installing uv...");
-        run("pip", &["install", "uv"])
-            .await
-            .expect("Failed to install uv");
+    fs::write("requirements.txt", content).await?;
+    
+    if setup_type != "blank" {
+        println!("📥 Installing requirements...");
+        run("uv", &["add", "-r", "requirements.txt"]).await?;
+        run("uv", &["sync"]).await?;
     }
-
-    println!("🚀 Initializing uv... ");
-    run("uv", &["init", "."])
-        .await
-        .expect("Failed to initialize uv");
-    if tokio::fs::metadata(".gitignore").await.is_ok() {
-        fs::remove_file(".gitignore").await.unwrap_or_else(|err| {
-            panic!("❌ Failed to remove .gitignore: {}", err);
-        });
-    }
-
-    println!("📦 Downloading .gitignore...");
-    download_and_write_file(GITIGNORE_URL, ".gitignore").await;
-
-    println!("📄 Downloading Apache LICENSE...");
-    download_and_write_file(LICENSE_URL, "LICENSE").await;
-
-    println!("🐍 Creating virtual environment...");
-    run("uv", &["venv", ".venv"])
-        .await
-        .expect("Failed to create virtual environment");
-
-    println!("📈 Upgrading pip...");
-    run("uv", &["pip", "install", "--upgrade", "pip"])
-        .await
-        .expect("Failed to upgrade pip");
-
-    println!("📥 Installing requirements...");
-    run("uv", &["add", "-r", "requirements.txt"])
-        .await
-        .expect("Failed to add requirements");
-    run("uv", &["sync"])
-        .await
-        .expect("Failed to sync dependencies");
-
-    println!("🔧 Adding all files to Git...");
-    git_command(&["add", "."])
-        .await
-        .expect("Failed to add files to Git");
-
-    println!("🔧 Configuring Git line endings...");
-    git_command(&["config", "core.autocrlf", "true"])
-        .await
-        .expect("Failed to configure Git line endings");
-
-    println!("🔧 Commiting Git repo...");
-    if let Err(err) = git_command(&["commit", "-m", "Initial commit"]).await {
-        eprintln!("❌ Failed to commit changes: {}", err);
-        return;
-    }
-
-    if let Some(repo_name) = args.github_repo {
-        println!("☁️ Creating GitHub repo: {}", repo_name);
-        create_github_repo(&repo_name, args.private).await;
-        let username = get_git_username().await;
-        git_command(&["branch", "-M", "main"])
-            .await
-            .expect("Failed to rename branch to main");
-        git_command(&[
-            "remote",
-            "add",
-            "origin",
-            &format!("https://github.com/{}/{}.git", username, repo_name),
-        ])
-        .await
-        .expect("Failed to add remote origin");
-        git_command(&["push", "-u", "origin", "main"])
-            .await
-            .expect("Failed to push to remote repository");
-    }
-
-    println!("✅ Setup Completed 🐍");
+    
+    Ok(())
 }
 
-fn validate_env_vars() {
-    if env::var("GITHUB_TOKEN").is_err() {
-        eprintln!(
-            "❌ GITHUB_TOKEN environment variable is not set. Please set it before proceeding."
-        );
-        std::process::exit(1);
-    }
+async fn initialize_git_repo() -> Result<()> {
+    println!("🔧 Initializing Git repository...");
+    git_command(&["init"]).await?;
+    git_command(&["config", "core.autocrlf", "true"]).await?;
+    git_command(&["add", "."]).await?;
+    
+    println!("🔧 Committing initial state...");
+    git_command(&["commit", "-m", "Initial commit"]).await?;
+    
+    Ok(())
 }
 
-async fn check_git_config(key: &str, prompt: &str) {
-    let value = get_git_config(key).await;
-    if value.is_empty() {
-        println!(
-            "Git global {} is not set. Please enter your {}:",
-            key, prompt
-        );
+async fn setup_github_remote(repo_name: &str) -> Result<()> {
+    git_command(&["branch", "-M", "main"]).await?;
+    let remote_url = format!("https://github.com/{}.git", repo_name);
+    
+    println!("🔗 Adding GitHub remote...");
+    git_command(&["remote", "add", "origin", &remote_url]).await?;
+    git_command(&["push", "-u", "origin", "main"]).await?;
+    
+    Ok(())
+}
+
+async fn download_and_write_file(url: &str, filename: &str) -> Result<()> {
+    let response = reqwest::get(url).await.context("Failed to download file")?;
+    if !response.status().is_success() {
+        anyhow::bail!("HTTP error: {}", response.status());
+    }
+    let body = response.text().await.context("Failed to read response body")?;
+    fs::write(filename, body).await.context("Failed to write file")?;
+    Ok(())
+}
+
+async fn check_git_config(key: &str, prompt: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["config", "--get", key])
+        .output()
+        .await?;
+
+    if output.stdout.is_empty() {
+        println!("Git {} is not configured. Please enter your {}:", key, prompt);
         let input = get_user_input();
-        if let Err(err) = git_command(&["config", "--global", key, &input]).await {
-            eprintln!("❌ Failed to set git {}: {}", key, err);
-        }
+        git_command(&["config", "--global", key, &input]).await?;
     }
+    Ok(())
 }
 
-async fn run(cmd: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
-    let status = Command::new(cmd).args(args).status().await?;
-    if !status.success() {
-        Err(format!("❌ Failed to run: {} {:?}", cmd, args).into())
-    } else {
-        Ok(())
-    }
-}
-
-async fn git_command(args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
-    run("git", args).await
-}
-
-async fn download_and_write_file(url: &str, filename: &str) {
-    let body = reqwest::get(url).await.unwrap().text().await.unwrap();
-    fs::write(filename, body).await.unwrap();
-}
-
-async fn create_github_repo(name: &str, private: bool) {
-    let token = env::var("GITHUB_TOKEN").expect("Set GITHUB_TOKEN env var");
+async fn create_github_repo(name: &str, private: bool) -> Result<()> {
+    let token = env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
     let client = reqwest::Client::new();
-    let res = client
+    
+    let response = client
         .post("https://api.github.com/user/repos")
         .bearer_auth(token)
         .header("User-Agent", "pycargo")
         .json(&serde_json::json!({ "name": name, "private": private }))
         .send()
-        .await;
-
-    match res {
-        Ok(response) if response.status().is_success() => {
-            println!("✅ GitHub repository '{}' created successfully.", name);
-        }
-        Ok(response) => {
-            let error_message = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            eprintln!("❌ Failed to create GitHub repo: {}", error_message);
-        }
-        Err(err) => {
-            eprintln!("❌ Error while sending request to GitHub API: {}", err);
-        }
-    }
-}
-
-async fn get_git_username() -> String {
-    let output = Command::new("git")
-        .args(["config", "--get", "user.name"])
-        .output()
         .await
-        .unwrap();
-    String::from_utf8(output.stdout).unwrap().trim().to_string()
-}
+        .context("Failed to create GitHub repository")?;
 
-async fn check_dependency(cmd: &str) {
-    if run(cmd, &["--version"]).await.is_err() {
-        eprintln!(
-            "❌ Dependency '{}' is not installed. Please install it and try again.",
-            cmd
-        );
-        std::process::exit(1);
+    if !response.status().is_success() {
+        let error_body = response.text().await.unwrap_or_default();
+        anyhow::bail!("GitHub API error: {}", error_body);
     }
+
+    println!("✅ Created GitHub repository: {}", name);
+    Ok(())
 }
 
-async fn get_git_config(key: &str) -> String {
-    let output = Command::new("git")
-        .args(["config", "--get", key])
-        .output()
+async fn run(cmd: &str, args: &[&str]) -> Result<()> {
+    let status = Command::new(cmd)
+        .args(args)
+        .status()
         .await
-        .unwrap();
-    String::from_utf8(output.stdout).unwrap().trim().to_string()
+        .with_context(|| format!("Failed to execute: {} {}", cmd, args.join(" ")))?;
+
+    if !status.success() {
+        anyhow::bail!("Command failed: {} {}", cmd, args.join(" "));
+    }
+    Ok(())
+}
+
+async fn git_command(args: &[&str]) -> Result<()> {
+    run("git", args).await
+}
+
+fn validate_env_vars() -> Result<()> {
+    if env::var("GITHUB_TOKEN").is_err() {
+        anyhow::bail!("GITHUB_TOKEN environment variable is not set");
+    }
+    Ok(())
 }
 
 fn get_user_input() -> String {
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    io::stdin().read_line(&mut input).expect("Failed to read input");
     input.trim().to_string()
 }
