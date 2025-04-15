@@ -115,17 +115,19 @@ async fn create_requirements_file(setup_type: &str) -> Result<()> {
         "advanced" => ADVANCED_TEMPLATE,
         "data-science" => DATASCIENCE_TEMPLATE,
         "blank" => "",
-        _ => anyhow::bail!("Invalid setup type. Use 'basic', 'advanced', 'data-science', or 'blank'"),
+        _ => {
+            anyhow::bail!("Invalid setup type. Use 'basic', 'advanced', 'data-science', or 'blank'")
+        }
     };
 
     fs::write("requirements.txt", content).await?;
-    
+
     if setup_type != "blank" {
         println!("📥 Installing requirements...");
         run("uv", &["add", "-r", "requirements.txt"]).await?;
         run("uv", &["sync"]).await?;
     }
-    
+
     Ok(())
 }
 
@@ -134,21 +136,34 @@ async fn initialize_git_repo() -> Result<()> {
     git_command(&["init"]).await?;
     git_command(&["config", "core.autocrlf", "true"]).await?;
     git_command(&["add", "."]).await?;
-    
+
     println!("🔧 Committing initial state...");
     git_command(&["commit", "-m", "Initial commit"]).await?;
-    
+
     Ok(())
 }
 
 async fn setup_github_remote(repo_name: &str) -> Result<()> {
     git_command(&["branch", "-M", "main"]).await?;
-    let remote_url = format!("https://github.com/{}.git", repo_name);
-    
+
+    // Extract GitHub username from git global config
+    let output = Command::new("git")
+        .args(["config", "--global", "user.name"])
+        .output()
+        .await
+        .context("Failed to retrieve GitHub username from git config")?;
+
+    let github_username = String::from_utf8(output.stdout)
+        .context("Failed to parse GitHub username from git config output")?
+        .trim()
+        .to_string();
+
+    let remote_url = format!("https://github.com/{}/{}.git", github_username, repo_name);
+
     println!("🔗 Adding GitHub remote...");
     git_command(&["remote", "add", "origin", &remote_url]).await?;
     git_command(&["push", "-u", "origin", "main"]).await?;
-    
+
     Ok(())
 }
 
@@ -157,8 +172,13 @@ async fn download_and_write_file(url: &str, filename: &str) -> Result<()> {
     if !response.status().is_success() {
         anyhow::bail!("HTTP error: {}", response.status());
     }
-    let body = response.text().await.context("Failed to read response body")?;
-    fs::write(filename, body).await.context("Failed to write file")?;
+    let body = response
+        .text()
+        .await
+        .context("Failed to read response body")?;
+    fs::write(filename, body)
+        .await
+        .context("Failed to write file")?;
     Ok(())
 }
 
@@ -169,7 +189,10 @@ async fn check_git_config(key: &str, prompt: &str) -> Result<()> {
         .await?;
 
     if output.stdout.is_empty() {
-        println!("Git {} is not configured. Please enter your {}:", key, prompt);
+        println!(
+            "Git {} is not configured. Please enter your {}:",
+            key, prompt
+        );
         let input = get_user_input();
         git_command(&["config", "--global", key, &input]).await?;
     }
@@ -179,7 +202,7 @@ async fn check_git_config(key: &str, prompt: &str) -> Result<()> {
 async fn create_github_repo(name: &str, private: bool) -> Result<()> {
     let token = env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
     let client = reqwest::Client::new();
-    
+
     let response = client
         .post("https://api.github.com/user/repos")
         .bearer_auth(token)
@@ -224,6 +247,8 @@ fn validate_env_vars() -> Result<()> {
 
 fn get_user_input() -> String {
     let mut input = String::new();
-    io::stdin().read_line(&mut input).expect("Failed to read input");
+    io::stdin()
+        .read_line(&mut input)
+        .expect("Failed to read input");
     input.trim().to_string()
 }
