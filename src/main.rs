@@ -18,6 +18,10 @@ struct Args {
     /// Setup type: basic, advanced, data-science, or blank
     #[arg(long, default_value = "advanced")]
     setup: String,
+
+    /// Specify if the GitHub repository should be private
+    #[arg(long)]
+    private: bool,
 }
 
 #[tokio::main]
@@ -140,7 +144,7 @@ xgboost
 
     if let Some(repo_name) = args.github_repo {
         println!("☁️ Creating GitHub repo: {}", repo_name);
-        create_github_repo(&repo_name).await;
+        create_github_repo(&repo_name, args.private).await;
         let username = get_git_username().await;
         run("git", &["branch", "-M", "main"])
             .await
@@ -214,14 +218,14 @@ async fn download_file(url: &str, filename: &str) {
     fs::write(filename, body).await.unwrap();
 }
 
-async fn create_github_repo(name: &str) {
+async fn create_github_repo(name: &str, private: bool) {
     let token = env::var("GITHUB_TOKEN").expect("Set GITHUB_TOKEN env var");
     let client = reqwest::Client::new();
     let res = client
         .post("https://api.github.com/user/repos")
         .bearer_auth(token)
         .header("User-Agent", "pycargo")
-        .json(&serde_json::json!({ "name": name }))
+        .json(&serde_json::json!({ "name": name, "private": private }))
         .send()
         .await
         .unwrap();

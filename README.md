@@ -39,13 +39,21 @@ Available setup types:
 - `data-science`: Includes `basic` libraries plus `scikit-learn`, `statsmodels`, `streamlit`, and `xgboost`.
 - `blank`: Creates an empty `requirements.txt` file for custom dependencies.
 
-### Create a GitHub Repository
+### Create a GitHub Repository (Public by Default)
 
 ```bash
 pycargo my_project --github-repo my_project_repo
 ```
 
-This creates a GitHub repository named `my_project_repo` and links it to the local Git repository.
+This creates a public GitHub repository named `my_project_repo` and links it to the local Git repository.
+
+### Create a Private GitHub Repository
+
+```bash
+pycargo my_project --github-repo my_project_repo --private
+```
+
+This creates a private GitHub repository named `my_project_repo` and links it to the local Git repository.
 
 ## Setting Up GitHub Personal Access Token
 

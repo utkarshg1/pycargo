@@ -101,6 +101,13 @@
                             KeyPath='yes'/>
                     </Component>
                     
+                    <Component Id='Readme' Guid='*'>
+                        <File Id='ReadmeFile'
+                              DiskId='1'
+                              Source='README.md'
+                              KeyPath='yes'/>
+                    </Component>
+                    
                     <Directory Id='Bin' Name='bin'>
                         <Component Id='Path' Guid='DE987748-63C6-4C85-9FEE-5F85468FB78C' KeyPath='yes'>
                             <Environment
@@ -139,6 +146,8 @@
               the license sidecar file from the installer.
             -->
             <ComponentRef Id='License'/>
+            
+            <ComponentRef Id='Readme'/>
             
             <ComponentRef Id='binary0'/>
 
