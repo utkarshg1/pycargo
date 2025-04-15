@@ -4,6 +4,10 @@ use std::io::{self, Write};
 use tokio::fs;
 use tokio::process::Command;
 
+const GITIGNORE_URL: &str =
+    "https://raw.githubusercontent.com/github/gitignore/main/Python.gitignore";
+const LICENSE_URL: &str = "https://www.apache.org/licenses/LICENSE-2.0.txt";
+
 /// PyCargo – Bootstrap a Python Data Science Project
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -26,6 +30,9 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
+    validate_env_vars();
+    check_dependency("git").await;
+    check_dependency("uv").await;
     check_git_config().await;
 
     let args = Args::parse();
@@ -68,6 +75,7 @@ matplotlib
 seaborn
 ipykernel
 scikit-learn
+joblib
 statsmodels
 streamlit
 xgboost
@@ -99,14 +107,10 @@ xgboost
     }
 
     println!("📦 Downloading .gitignore...");
-    download_file(
-        "https://raw.githubusercontent.com/github/gitignore/main/Python.gitignore",
-        ".gitignore",
-    )
-    .await;
+    download_file(GITIGNORE_URL, ".gitignore").await;
 
     println!("📄 Downloading Apache LICENSE...");
-    download_file("https://www.apache.org/licenses/LICENSE-2.0.txt", "LICENSE").await;
+    download_file(LICENSE_URL, "LICENSE").await;
 
     println!("🐍 Creating virtual environment...");
     run("uv", &["venv", ".venv"])
@@ -127,17 +131,17 @@ xgboost
         .expect("Failed to sync dependencies");
 
     println!("🔧 Adding all files to Git...");
-    run("git", &["add", "."])
+    git_command(&["add", "."])
         .await
         .expect("Failed to add files to Git");
 
     println!("🔧 Configuring Git line endings...");
-    run("git", &["config", "core.autocrlf", "true"])
+    git_command(&["config", "core.autocrlf", "true"])
         .await
         .expect("Failed to configure Git line endings");
 
     println!("🔧 Commiting Git repo...");
-    if let Err(err) = run("git", &["commit", "-m", "Initial commit"]).await {
+    if let Err(err) = git_command(&["commit", "-m", "Initial commit"]).await {
         eprintln!("❌ Failed to commit changes: {}", err);
         return;
     }
@@ -146,21 +150,18 @@ xgboost
         println!("☁️ Creating GitHub repo: {}", repo_name);
         create_github_repo(&repo_name, args.private).await;
         let username = get_git_username().await;
-        run("git", &["branch", "-M", "main"])
+        git_command(&["branch", "-M", "main"])
             .await
             .expect("Failed to rename branch to main");
-        run(
-            "git",
-            &[
-                "remote",
-                "add",
-                "origin",
-                &format!("https://github.com/{}/{}.git", username, repo_name),
-            ],
-        )
+        git_command(&[
+            "remote",
+            "add",
+            "origin",
+            &format!("https://github.com/{}/{}.git", username, repo_name),
+        ])
         .await
         .expect("Failed to add remote origin");
-        run("git", &["push", "-u", "origin", "main"])
+        git_command(&["push", "-u", "origin", "main"])
             .await
             .expect("Failed to push to remote repository");
     }
@@ -168,23 +169,32 @@ xgboost
     println!("✅ Setup Completed 🐍");
 }
 
+fn validate_env_vars() {
+    if env::var("GITHUB_TOKEN").is_err() {
+        eprintln!(
+            "❌ GITHUB_TOKEN environment variable is not set. Please set it before proceeding."
+        );
+        std::process::exit(1);
+    }
+}
+
 async fn check_git_config() {
     let user_name = get_git_config("user.name").await;
     if user_name.is_empty() {
         println!("Git global user.name is not set. Please enter your name:");
         let name = get_user_input();
-        run("git", &["config", "--global", "user.name", &name])
-            .await
-            .expect("Failed to set git user.name");
+        if let Err(err) = git_command(&["config", "--global", "user.name", &name]).await {
+            eprintln!("❌ Failed to set git user.name: {}", err);
+        }
     }
 
     let user_email = get_git_config("user.email").await;
     if user_email.is_empty() {
         println!("Git global user.email is not set. Please enter your email:");
         let email = get_user_input();
-        run("git", &["config", "--global", "user.email", &email])
-            .await
-            .expect("Failed to set git user.email");
+        if let Err(err) = git_command(&["config", "--global", "user.email", &email]).await {
+            eprintln!("❌ Failed to set git user.email: {}", err);
+        }
     }
 }
 
@@ -213,6 +223,10 @@ async fn run(cmd: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error>>
     }
 }
 
+async fn git_command(args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+    run("git", args).await
+}
+
 async fn download_file(url: &str, filename: &str) {
     let body = reqwest::get(url).await.unwrap().text().await.unwrap();
     fs::write(filename, body).await.unwrap();
@@ -227,14 +241,22 @@ async fn create_github_repo(name: &str, private: bool) {
         .header("User-Agent", "pycargo")
         .json(&serde_json::json!({ "name": name, "private": private }))
         .send()
-        .await
-        .unwrap();
+        .await;
 
-    if !res.status().is_success() {
-        panic!(
-            "❌ Failed to create GitHub repo: {:?}",
-            res.text().await.unwrap()
-        );
+    match res {
+        Ok(response) if response.status().is_success() => {
+            println!("✅ GitHub repository '{}' created successfully.", name);
+        }
+        Ok(response) => {
+            let error_message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            eprintln!("❌ Failed to create GitHub repo: {}", error_message);
+        }
+        Err(err) => {
+            eprintln!("❌ Error while sending request to GitHub API: {}", err);
+        }
     }
 }
 
@@ -245,4 +267,14 @@ async fn get_git_username() -> String {
         .await
         .unwrap();
     String::from_utf8(output.stdout).unwrap().trim().to_string()
+}
+
+async fn check_dependency(cmd: &str) {
+    if run(cmd, &["--version"]).await.is_err() {
+        eprintln!(
+            "❌ Dependency '{}' is not installed. Please install it and try again.",
+            cmd
+        );
+        std::process::exit(1);
+    }
 }
