@@ -21,6 +21,10 @@ Download the latest release from the `pycargo-0.2.7-x86_64.msi` file and install
 
 Run the `pycargo` command with the desired options:
 
+### Demo
+
+![pycargo_demo](./demo/pycargo_demo.gif)
+
 ### Basic Usage
 
 ```cmd
