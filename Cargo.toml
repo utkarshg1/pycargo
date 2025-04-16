@@ -5,6 +5,7 @@ edition = "2024"
 authors = ["Utkarsh Gaikwad"]
 license = "MIT"
 include = ["src/**", "templates/**"]
+description = "Bootstrap Python projects using a Rust CLI"
 repository = "https://github.com/utkarshg1/pycargo"
 readme = "README.md"
 keywords = ["python", "cli", "project", "bootstrap"]
