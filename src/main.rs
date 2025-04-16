@@ -20,18 +20,19 @@ const DATASCIENCE_TEMPLATE: &str = include_str!("../templates/datascience.txt");
 #[command(author, version, about)]
 struct Args {
     /// Name of the project directory
+    #[arg(short, long)]
     name: String,
 
     /// Name of the GitHub repo (optional)
-    #[arg(long)]
+    #[arg(short = 'g', long)]
     github_repo: Option<String>,
 
     /// Setup type: basic, advanced, data-science, or blank
-    #[arg(long, default_value = "advanced")]
+    #[arg(short = 's', long, default_value = "advanced")]
     setup: String,
 
     /// Specify if the GitHub repository should be private
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     private: bool,
 }
 
