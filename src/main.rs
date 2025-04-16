@@ -23,9 +23,13 @@ struct Args {
     #[arg(short, long)]
     name: String,
 
-    /// Name of the GitHub repo (optional)
+    /// Flag to indicate if a GitHub repo should be created
     #[arg(short = 'g', long)]
-    github_repo: Option<String>,
+    github_repo: bool,
+
+    /// Optional custom name for the GitHub repo
+    #[arg(long, value_name = "GITHUB_REPO_NAME")]
+    github_repo_name: Option<String>,
 
     /// Setup type: basic, advanced, data-science, or blank
     #[arg(short = 's', long, default_value = "advanced")]
@@ -110,11 +114,12 @@ async fn main() -> Result<()> {
     );
 
     // Handle GitHub integration
-    let repo_name = args
-        .github_repo
-        .clone()
-        .unwrap_or_else(|| project_name.clone());
-    if let Some(_) = args.github_repo {
+    if args.github_repo {
+        let repo_name = args
+            .github_repo_name
+            .clone()
+            .unwrap_or_else(|| project_name.clone());
+
         validate_env_vars()?;
         create_github_repo(&repo_name, args.private).await?;
         setup_github_remote(&repo_name).await?;
