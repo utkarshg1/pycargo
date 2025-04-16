@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use colored::*; // Add this at the top for colored output
 use std::env;
 use std::io;
 use tokio::fs;
@@ -22,7 +21,7 @@ struct Args {
     /// Name of the project directory
     name: String,
 
-    /// Name of the GitHub repo (optional, inferred from name if not provided)
+    /// Name of the GitHub repo (optional)
     #[arg(long)]
     github_repo: Option<String>,
 
@@ -35,112 +34,58 @@ struct Args {
     private: bool,
 }
 
-/// Print a bold, emoji‑prefixed section header
-fn print_section_header(emoji: &str, title: &str) {
-    println!("{}", format!("=== {} {} ===", emoji, title).bold());
-    println!();
-}
-
-/// Print a green checkmark + message, then blank line
-fn print_success(msg: &str) {
-    println!("  {}", format!("✅ {}", msg).green());
-    println!();
-}
-
-/// Print a sub‑item (indented dash)
-fn print_subitem(msg: &str) {
-    println!("     - {}", msg);
-}
-
-/// Print a warning line, then blank line
-fn print_warning(msg: &str) {
-    println!("  - {}", msg.yellow());
-    println!();
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let project_name = &args.name;
 
-    // PROJECT SETUP
-    print_section_header("📁", "Project Setup");
-    if fs::metadata(project_name).await.is_ok() {
-        anyhow::bail!("{} Directory '{}' already exists", "❌".red(), project_name);
+    // Early exit for version flag
+    if std::env::args().any(|arg| arg == "--version") {
+        return Ok(());
     }
-    fs::create_dir(project_name).await?;
-    print_success(&format!("Created project directory: {}", project_name));
 
-    // GIT CONFIG CHECK
+    // Check directory existence
+    let project_name = &args.name;
+    if fs::metadata(project_name).await.is_ok() {
+        anyhow::bail!("❌ Directory '{}' already exists", project_name);
+    }
+
+    // Check Git configuration
     check_git_config("user.name", "name").await?;
     check_git_config("user.email", "email").await?;
 
-    // DEPENDENCY CHECK
+    // Check dependencies
     check_uv_installation().await?;
 
-    // ENVIRONMENT SETUP
-    print_section_header("🚀", "Environment Setup");
+    // Create project structure
+    println!("📁 Creating project directory...");
+    fs::create_dir(project_name).await?;
+    env::set_current_dir(project_name)?;
+
+    // Setup environment
     setup_environment().await?;
 
-    // REQUIREMENTS
+    // Setup requirements.txt
+    println!("📝 Creating requirements.txt from template...");
     create_requirements_file(&args.setup).await?;
-    print_success("Created requirements.txt from template");
-    let pkg_count = fs::read_to_string("requirements.txt")
-        .await?
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .count();
-    print_success(&format!("Installed requirements ({} packages)", pkg_count));
-    print_subitem("Example: pandas==2.2.3, matplotlib==3.10.1, seaborn==0.13.2");
-    println!();
 
-    // FILE DOWNLOADS
-    print_section_header("📦", "File Downloads");
+    // Download additional files
+    println!("📦 Downloading .gitignore...");
     download_and_write_file(GITIGNORE_URL, ".gitignore").await?;
-    print_success("Downloaded .gitignore");
+
+    println!("📄 Downloading Apache LICENSE...");
     download_and_write_file(LICENSE_URL, "LICENSE").await?;
-    print_success("Downloaded Apache LICENSE");
 
-    // GIT SETUP
-    print_section_header("🔧", "Git Setup");
+    // Initialize Git
     initialize_git_repo().await?;
-    print_success("Initialized Git repository");
-    print_success("Committed initial state");
-    print_subitem("8 files changed, 1196 insertions");
-    print_subitem("Files: .gitignore, LICENSE, README.md, main.py, etc.");
-    println!();
 
-    // WARNINGS
-    print_section_header("⚠️", "Warnings");
-    let files = vec![
-        ".gitignore",
-        ".python-version",
-        "LICENSE",
-        "main.py",
-        "pyproject.toml",
-        "uv.lock",
-    ];
-    print_warning(&format!(
-        "LF will be replaced by CRLF in the following files:\n    {}",
-        files.join(", ")
-    ));
-
-    // GITHUB INTEGRATION
-    if let Some(repo_name) = &args.github_repo {
-        print_section_header("🌐", "GitHub Integration");
+    // Handle GitHub integration
+    if let Some(repo_name) = args.github_repo {
         validate_env_vars()?;
-        create_github_repo(repo_name, args.private).await?;
-        setup_github_remote(repo_name).await?;
-        print_success("Pushed to GitHub");
+        create_github_repo(&repo_name, args.private).await?;
+        setup_github_remote(&repo_name).await?;
     }
 
-    // FINAL SUMMARY
-    println!("{} Setup Completed 🐍", "✅".green().bold());
-    println!();
-    println!("To activate the virtual environment, run:");
-    println!("  {}", ".venv\\Scripts\\activate".bold());
-    println!();
-
+    println!("✅ Setup Completed 🐍");
     Ok(())
 }
 
@@ -189,7 +134,7 @@ async fn initialize_git_repo() -> Result<()> {
     git_command(&["config", "core.autocrlf", "true"]).await?;
     git_command(&["add", "."]).await?;
 
-    println!("{} Committing initial state...", "🔧".blue());
+    println!("🔧 Committing initial state...");
     git_command(&["commit", "-m", "Initial commit"]).await?;
 
     Ok(())

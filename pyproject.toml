@@ -17,3 +17,8 @@ dependencies = [
     "seaborn>=0.13.2",
     "streamlit>=1.44.1",
 ]
+
+[tool.uv.workspace]
+members = [
+    "testujg",
+]
