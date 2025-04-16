@@ -13,7 +13,7 @@ PyCargo is a CLI tool designed to bootstrap Python projects with ease. It helps 
 
 ## Installation
 
-Download the latest release from the `wix/pycargo-0.2.5-x86_64.msi` file and install it on your system.
+Download the latest release from the `pycargo-0.2.6-x86_64.msi` file and install it on your system.
 
 ## Usage
 
