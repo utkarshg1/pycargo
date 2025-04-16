@@ -125,7 +125,11 @@ async fn main() -> Result<()> {
         let remote_url = setup_github_remote(&repo_name).await?;
         println!(
             "  {}",
-            format!("✅ GitHub repository created: {}", remote_url).green()
+            format!(
+                "✅ GitHub repository created: {}",
+                remote_url.trim_end_matches(".git")
+            )
+            .green()
         );
     }
 
