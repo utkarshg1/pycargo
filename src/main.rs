@@ -78,7 +78,6 @@ async fn main() -> Result<()> {
 
     println!("  {}", "✅ Initialized project with uv".green());
     println!("  {}", "✅ Created virtual environment".green());
-    println!("     - {}", "Python interpreter: C:\\Users\\noble\\AppData\\Local\\Programs\\Python\\Python312\\python.exe".yellow());
     println!(
         "     - {}",
         "Activate with: .venv\\Scripts\\activate".yellow()
@@ -87,11 +86,7 @@ async fn main() -> Result<()> {
     // Setup requirements.txt
     create_requirements_file(&args.setup).await?;
     println!("  {}", "✅ Created requirements.txt from template".green());
-    println!("  {}", "✅ Installed requirements (41 packages)".green());
-    println!(
-        "     - {}",
-        "Example: pandas==2.2.3, matplotlib==3.10.1, seaborn==0.13.2".yellow()
-    );
+    println!("  {}", "✅ Installed requirements".green());
 
     println!("\n{}", "=== 📦 File Downloads ===".bold().blue());
 
@@ -108,7 +103,6 @@ async fn main() -> Result<()> {
     initialize_git_repo().await?;
     println!("  {}", "✅ Initialized Git repository".green());
     println!("  {}", "✅ Committed initial state".green());
-    println!("     - {}", "8 files changed, 1196 insertions".yellow());
     println!(
         "     - {}",
         "Files: .gitignore, LICENSE, README.md, main.py, etc.".yellow()
