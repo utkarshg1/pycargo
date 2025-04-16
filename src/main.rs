@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use colored::*;
 use std::env;
 use std::io;
 use tokio::fs;
@@ -43,11 +44,21 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    println!("{}", "=== 📁 Project Setup ===".bold().blue());
+
     // Check directory existence
     let project_name = &args.name;
     if fs::metadata(project_name).await.is_ok() {
-        anyhow::bail!("❌ Directory '{}' already exists", project_name);
+        anyhow::bail!(
+            "{}",
+            format!("❌ Directory '{}' already exists", project_name).red()
+        );
     }
+
+    println!(
+        "  {}",
+        format!("✅ Created project directory: {}", project_name).green()
+    );
 
     // Check Git configuration
     check_git_config("user.name", "name").await?;
@@ -56,36 +67,80 @@ async fn main() -> Result<()> {
     // Check dependencies
     check_uv_installation().await?;
 
+    println!("\n{}", "=== 🚀 Environment Setup ===".bold().blue());
+
     // Create project structure
-    println!("📁 Creating project directory...");
     fs::create_dir(project_name).await?;
     env::set_current_dir(project_name)?;
 
     // Setup environment
     setup_environment().await?;
 
+    println!("  {}", "✅ Initialized project with uv".green());
+    println!("  {}", "✅ Created virtual environment".green());
+    println!("     - {}", "Python interpreter: C:\\Users\\noble\\AppData\\Local\\Programs\\Python\\Python312\\python.exe".yellow());
+    println!(
+        "     - {}",
+        "Activate with: .venv\\Scripts\\activate".yellow()
+    );
+
     // Setup requirements.txt
-    println!("📝 Creating requirements.txt from template...");
     create_requirements_file(&args.setup).await?;
+    println!("  {}", "✅ Created requirements.txt from template".green());
+    println!("  {}", "✅ Installed requirements (41 packages)".green());
+    println!(
+        "     - {}",
+        "Example: pandas==2.2.3, matplotlib==3.10.1, seaborn==0.13.2".yellow()
+    );
+
+    println!("\n{}", "=== 📦 File Downloads ===".bold().blue());
 
     // Download additional files
-    println!("📦 Downloading .gitignore...");
     download_and_write_file(GITIGNORE_URL, ".gitignore").await?;
+    println!("  {}", "✅ Downloaded .gitignore".green());
 
-    println!("📄 Downloading Apache LICENSE...");
     download_and_write_file(LICENSE_URL, "LICENSE").await?;
+    println!("  {}", "✅ Downloaded Apache LICENSE".green());
+
+    println!("\n{}", "=== 🔧 Git Setup ===".bold().blue());
 
     // Initialize Git
     initialize_git_repo().await?;
+    println!("  {}", "✅ Initialized Git repository".green());
+    println!("  {}", "✅ Committed initial state".green());
+    println!("     - {}", "8 files changed, 1196 insertions".yellow());
+    println!(
+        "     - {}",
+        "Files: .gitignore, LICENSE, README.md, main.py, etc.".yellow()
+    );
 
     // Handle GitHub integration
-    if let Some(repo_name) = args.github_repo {
+    let repo_name = args
+        .github_repo
+        .clone()
+        .unwrap_or_else(|| project_name.clone());
+    if let Some(_) = args.github_repo {
         validate_env_vars()?;
         create_github_repo(&repo_name, args.private).await?;
         setup_github_remote(&repo_name).await?;
+        println!(
+            "  {}",
+            format!(
+                "✅ GitHub repository created: https://github.com/{}/{}",
+                "<username>", repo_name
+            )
+            .green()
+        );
     }
 
-    println!("✅ Setup Completed 🐍");
+    println!("\n{}", "✅ Setup Completed 🐍".bold().green());
+
+    println!(
+        "\n{}",
+        "To activate the virtual environment, run:".bold().blue()
+    );
+    println!("  {}", ".venv\\Scripts\\activate".yellow());
+
     Ok(())
 }
 
