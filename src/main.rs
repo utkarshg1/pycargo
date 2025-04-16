@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use colored::*; // Add this at the top for colored output
 use std::env;
 use std::io;
 use tokio::fs;
@@ -21,7 +22,7 @@ struct Args {
     /// Name of the project directory
     name: String,
 
-    /// Name of the GitHub repo (optional)
+    /// Name of the GitHub repo (optional, inferred from name if not provided)
     #[arg(long)]
     github_repo: Option<String>,
 
@@ -38,15 +39,10 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Early exit for version flag
-    if std::env::args().any(|arg| arg == "--version") {
-        return Ok(());
-    }
-
     // Check directory existence
     let project_name = &args.name;
     if fs::metadata(project_name).await.is_ok() {
-        anyhow::bail!("❌ Directory '{}' already exists", project_name);
+        anyhow::bail!("{} Directory '{}' already exists", "❌".red(), project_name);
     }
 
     // Check Git configuration
@@ -56,8 +52,11 @@ async fn main() -> Result<()> {
     // Check dependencies
     check_uv_installation().await?;
 
+    // Add header for project setup
+    println!("\n=== {} ===", "Project Setup".bold().underline());
+
     // Create project structure
-    println!("📁 Creating project directory...");
+    println!("{} Creating project directory...", "📁".blue());
     fs::create_dir(project_name).await?;
     env::set_current_dir(project_name)?;
 
@@ -65,27 +64,62 @@ async fn main() -> Result<()> {
     setup_environment().await?;
 
     // Setup requirements.txt
-    println!("📝 Creating requirements.txt from template...");
+    println!(
+        "{} Creating requirements.txt from template...",
+        "📝".green()
+    );
     create_requirements_file(&args.setup).await?;
 
     // Download additional files
-    println!("📦 Downloading .gitignore...");
+    println!("{} Downloading .gitignore...", "📦".yellow());
     download_and_write_file(GITIGNORE_URL, ".gitignore").await?;
 
-    println!("📄 Downloading Apache LICENSE...");
+    println!("{} Downloading Apache LICENSE...", "📄".cyan());
     download_and_write_file(LICENSE_URL, "LICENSE").await?;
 
     // Initialize Git
+    println!("{} Initializing Git repository...", "🔧".blue());
     initialize_git_repo().await?;
 
     // Handle GitHub integration
     if let Some(repo_name) = args.github_repo {
+        // Add header for GitHub integration
+        println!("\n=== {} ===", "GitHub Integration".bold().underline());
+
         validate_env_vars()?;
         create_github_repo(&repo_name, args.private).await?;
         setup_github_remote(&repo_name).await?;
+
+        // Extract GitHub username from git global config
+        let output = Command::new("git")
+            .args(["config", "--global", "user.name"])
+            .output()
+            .await
+            .context("Failed to retrieve GitHub username from git config")?;
+
+        let github_username = String::from_utf8(output.stdout)
+            .context("Failed to parse GitHub username from git config output")?
+            .trim()
+            .to_string();
+
+        let remote_url = format!("https://github.com/{}/{}.git", github_username, repo_name);
+
+        // Add summary at the end
+        println!("\n{} Setup Completed 🐍", "✅".green());
+        println!(
+            "\nTo activate the virtual environment, run: {}",
+            ".venv\\Scripts\\activate".bold()
+        );
+        println!("\nFinal repository link: {}", remote_url);
+    } else {
+        // Add summary at the end
+        println!("\n{} Setup Completed 🐍", "✅".green());
+        println!(
+            "\nTo activate the virtual environment, run: {}",
+            ".venv\\Scripts\\activate".bold()
+        );
     }
 
-    println!("✅ Setup Completed 🐍");
     Ok(())
 }
 
@@ -134,7 +168,7 @@ async fn initialize_git_repo() -> Result<()> {
     git_command(&["config", "core.autocrlf", "true"]).await?;
     git_command(&["add", "."]).await?;
 
-    println!("🔧 Committing initial state...");
+    println!("{} Committing initial state...", "🔧".blue());
     git_command(&["commit", "-m", "Initial commit"]).await?;
 
     Ok(())
