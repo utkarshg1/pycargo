@@ -145,19 +145,19 @@ async fn main() -> Result<()> {
 }
 
 async fn check_uv_installation() -> Result<()> {
-    println!("🔧 Checking uv installation...");
+    println!("{}", "🔧 Checking uv installation...".bold().blue());
     if run("uv", &["--version"]).await.is_err() {
-        println!("uv is not installed. Installing uv...");
+        println!("{}", "uv is not installed. Installing uv...".yellow());
         run("pip", &["install", "uv"]).await?;
     }
     Ok(())
 }
 
 async fn setup_environment() -> Result<()> {
-    println!("🚀 Initializing uv...");
+    println!("{}", "🚀 Initializing uv...".bold().blue());
     run("uv", &["init", "."]).await?;
 
-    println!("🐍 Creating virtual environment...");
+    println!("{}", "🐍 Creating virtual environment...".bold().blue());
     run("uv", &["venv", ".venv"]).await
 }
 
@@ -168,14 +168,17 @@ async fn create_requirements_file(setup_type: &str) -> Result<()> {
         "data-science" => DATASCIENCE_TEMPLATE,
         "blank" => "",
         _ => {
-            anyhow::bail!("Invalid setup type. Use 'basic', 'advanced', 'data-science', or 'blank'")
+            anyhow::bail!(
+                "{}",
+                "Invalid setup type. Use 'basic', 'advanced', 'data-science', or 'blank'".red()
+            )
         }
     };
 
     fs::write("requirements.txt", content).await?;
 
     if setup_type != "blank" {
-        println!("📥 Installing requirements...");
+        println!("{}", "📥 Installing requirements...".bold().blue());
         run("uv", &["add", "-r", "requirements.txt"]).await?;
         run("uv", &["sync"]).await?;
     }
@@ -184,12 +187,12 @@ async fn create_requirements_file(setup_type: &str) -> Result<()> {
 }
 
 async fn initialize_git_repo() -> Result<()> {
-    println!("🔧 Initializing Git repository...");
+    println!("{}", "🔧 Initializing Git repository...".bold().blue());
     git_command(&["init"]).await?;
     git_command(&["config", "core.autocrlf", "true"]).await?;
     git_command(&["add", "."]).await?;
 
-    println!("🔧 Committing initial state...");
+    println!("{}", "🔧 Committing initial state...".bold().blue());
     git_command(&["commit", "-m", "Initial commit"]).await?;
 
     Ok(())
@@ -212,7 +215,7 @@ async fn setup_github_remote(repo_name: &str) -> Result<()> {
 
     let remote_url = format!("https://github.com/{}/{}.git", github_username, repo_name);
 
-    println!("🔗 Adding GitHub remote...");
+    println!("{}", "🔗 Adding GitHub remote...".bold().blue());
     git_command(&["remote", "add", "origin", &remote_url]).await?;
     git_command(&["push", "-u", "origin", "main"]).await?;
 
@@ -222,7 +225,7 @@ async fn setup_github_remote(repo_name: &str) -> Result<()> {
 async fn download_and_write_file(url: &str, filename: &str) -> Result<()> {
     let response = reqwest::get(url).await.context("Failed to download file")?;
     if !response.status().is_success() {
-        anyhow::bail!("HTTP error: {}", response.status());
+        anyhow::bail!("{}", format!("HTTP error: {}", response.status()).red());
     }
     let body = response
         .text()
@@ -242,8 +245,12 @@ async fn check_git_config(key: &str, prompt: &str) -> Result<()> {
 
     if output.stdout.is_empty() {
         println!(
-            "Git {} is not configured. Please enter your {}:",
-            key, prompt
+            "{}",
+            format!(
+                "Git {} is not configured. Please enter your {}:",
+                key, prompt
+            )
+            .yellow()
         );
         let input = get_user_input();
         git_command(&["config", "--global", key, &input]).await?;
@@ -266,10 +273,13 @@ async fn create_github_repo(name: &str, private: bool) -> Result<()> {
 
     if !response.status().is_success() {
         let error_body = response.text().await.unwrap_or_default();
-        anyhow::bail!("GitHub API error: {}", error_body);
+        anyhow::bail!("{}", format!("GitHub API error: {}", error_body).red());
     }
 
-    println!("✅ Created GitHub repository: {}", name);
+    println!(
+        "{}",
+        format!("✅ Created GitHub repository: {}", name).green()
+    );
     Ok(())
 }
 
@@ -281,7 +291,10 @@ async fn run(cmd: &str, args: &[&str]) -> Result<()> {
         .with_context(|| format!("Failed to execute: {} {}", cmd, args.join(" ")))?;
 
     if !status.success() {
-        anyhow::bail!("Command failed: {} {}", cmd, args.join(" "));
+        anyhow::bail!(
+            "{}",
+            format!("Command failed: {} {}", cmd, args.join(" ")).red()
+        );
     }
     Ok(())
 }
@@ -292,7 +305,7 @@ async fn git_command(args: &[&str]) -> Result<()> {
 
 fn validate_env_vars() -> Result<()> {
     if env::var("GITHUB_TOKEN").is_err() {
-        anyhow::bail!("GITHUB_TOKEN environment variable is not set");
+        anyhow::bail!("{}", "GITHUB_TOKEN environment variable is not set".red());
     }
     Ok(())
 }
