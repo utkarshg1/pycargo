@@ -284,18 +284,26 @@ async fn create_github_repo(name: &str, private: bool) -> Result<()> {
 }
 
 async fn run(cmd: &str, args: &[&str]) -> Result<()> {
-    let status = Command::new(cmd)
+    let output = Command::new(cmd)
         .args(args)
-        .status()
+        .output()
         .await
         .with_context(|| format!("Failed to execute: {} {}", cmd, args.join(" ")))?;
 
-    if !status.success() {
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!(
             "{}",
-            format!("Command failed: {} {}", cmd, args.join(" ")).red()
+            format!(
+                "Command failed: {} {}\nError Output: {}",
+                cmd,
+                args.join(" "),
+                stderr
+            )
+            .red()
         );
     }
+
     Ok(())
 }
 
