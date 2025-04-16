@@ -1,6 +1,6 @@
 [package]
 name = "pycargo"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2024"
 authors = ["Utkarsh Gaikwad"]
 license = "MIT"
@@ -14,3 +14,4 @@ serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 colored = "3.0.0"
+indicatif = "0.17.11"
