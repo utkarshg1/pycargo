@@ -122,14 +122,10 @@ async fn main() -> Result<()> {
 
         validate_env_vars()?;
         create_github_repo(&repo_name, args.private).await?;
-        setup_github_remote(&repo_name).await?;
+        let remote_url = setup_github_remote(&repo_name).await?;
         println!(
             "  {}",
-            format!(
-                "✅ GitHub repository created: https://github.com/{}/{}",
-                "<username>", repo_name
-            )
-            .green()
+            format!("✅ GitHub repository created: {}", remote_url).green()
         );
     }
 
@@ -198,28 +194,18 @@ async fn initialize_git_repo() -> Result<()> {
     Ok(())
 }
 
-async fn setup_github_remote(repo_name: &str) -> Result<()> {
+async fn setup_github_remote(repo_name: &str) -> Result<String> {
     git_command(&["branch", "-M", "main"]).await?;
 
     // Extract GitHub username from git global config
-    let output = Command::new("git")
-        .args(["config", "--global", "user.name"])
-        .output()
-        .await
-        .context("Failed to retrieve GitHub username from git config")?;
-
-    let github_username = String::from_utf8(output.stdout)
-        .context("Failed to parse GitHub username from git config output")?
-        .trim()
-        .to_string();
-
-    let remote_url = format!("https://github.com/{}/{}.git", github_username, repo_name);
+    let username = get_git_username().await?;
+    let remote_url = format!("https://github.com/{}/{}.git", username, repo_name);
 
     println!("{}", "🔗 Adding GitHub remote...".bold().blue());
     git_command(&["remote", "add", "origin", &remote_url]).await?;
     git_command(&["push", "-u", "origin", "main"]).await?;
 
-    Ok(())
+    Ok(remote_url)
 }
 
 async fn download_and_write_file(url: &str, filename: &str) -> Result<()> {
@@ -324,4 +310,20 @@ fn get_user_input() -> String {
         .read_line(&mut input)
         .expect("Failed to read input");
     input.trim().to_string()
+}
+
+/// Retrieves the GitHub username from global git config
+async fn get_git_username() -> Result<String> {
+    let output = Command::new("git")
+        .args(["config", "--global", "user.name"])
+        .output()
+        .await
+        .context("Failed to retrieve GitHub username from git config")?;
+
+    let username = String::from_utf8(output.stdout)
+        .context("Failed to parse GitHub username from git config output")?
+        .trim()
+        .to_string();
+
+    Ok(username)
 }
