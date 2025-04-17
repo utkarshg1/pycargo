@@ -8,3 +8,4 @@ statsmodels
 xgboost
 joblib
 streamlit
+kneed

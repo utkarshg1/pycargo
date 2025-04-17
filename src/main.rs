@@ -200,6 +200,16 @@ async fn create_requirements_file(setup_type: &str) -> Result<()> {
     println!("{}", "✅ requirements.txt created".green());
 
     if setup_type != "blank" {
+        // Print requirements in yellow before installing
+        let reqs = fs::read_to_string("requirements.txt")
+            .await
+            .unwrap_or_default();
+        println!(
+            "{}\n{}",
+            "Installing the following requirements:".yellow(),
+            reqs.yellow()
+        );
+
         let spinner = ProgressBar::new_spinner();
         spinner.set_style(spinner_style());
         spinner.set_message("Installing requirements...");
