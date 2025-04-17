@@ -89,31 +89,21 @@ async fn main() -> Result<()> {
 
     // Setup environment
     setup_environment().await?;
-
-    println!("{}", "✅ Initialized project with uv".green());
-    println!("{}", "✅ Created virtual environment".green());
     println!("{}", "Activate with: .venv\\Scripts\\activate".yellow());
 
     // Setup requirements.txt
     create_requirements_file(&args.setup).await?;
-    println!("{}", "✅ Created requirements.txt from template".green());
-    println!("{}", "✅ Installed requirements".green());
 
     println!("\n{}", "=== 📦 File Downloads ===".bold().blue());
 
     // Download additional files
     download_and_write_file(GITIGNORE_URL, ".gitignore").await?;
-    println!("{}", "✅ Downloaded .gitignore".green());
-
     download_and_write_file(LICENSE_URL, "LICENSE").await?;
-    println!("{}", "✅ Downloaded Apache LICENSE".green());
 
     println!("\n{}", "=== 🔧 Git Setup ===".bold().blue());
 
     // Initialize Git
     initialize_git_repo().await?;
-    println!("{}", "✅ Initialized Git repository".green());
-    println!("{}", "✅ Committed initial state".green());
     println!(
         "{}",
         "Files: .gitignore, LICENSE, README.md, main.py, etc.".yellow()
