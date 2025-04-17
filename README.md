@@ -23,7 +23,7 @@ Run the `pycargo` command with the desired options:
 
 ### Demo
 
-![pycargo_demo](./demo/pycargo_demo.gif)
+![pycargo_demo](./demo/pycargo_0210.gif)
 
 ### Basic Usage
 
